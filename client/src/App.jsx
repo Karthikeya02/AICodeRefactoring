@@ -16,20 +16,23 @@ export default function App() {
   const [explanation, setExplanation] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [detectSmells, setDetectSmells] = useState(true);
+  const [applySolid, setApplySolid] = useState(true);
+  const [includeMetrics, setIncludeMetrics] = useState(false);
   const [splitView, setSplitView] = useState(true);
 
   const hasOutput = refactored.trim().length > 0;
 
   const detectLanguage = (input) => {
     const sample = input || "";
-    if (/(def |import |from |elif |print\()/m.test(sample)) return "Python";
-    if (/\b(public class|System\.out\.println|package )/m.test(sample)) return "Java";
-    if (/\b(using |Console\.WriteLine|namespace )/m.test(sample)) return "C#";
-    if (/#include\s+<|std::|\bint\s+main\s*\(/m.test(sample)) return "C++";
-    if (/\bfunc\s+\w+\s*\(|\bpackage\s+main\b|fmt\./m.test(sample)) return "Go";
-    if (/\bfn\s+\w+\s*\(|\buse\s+\w+::/m.test(sample)) return "Rust";
-    if (/\binterface\b|\btype\s+\w+\s*=|:\s*\w+/m.test(sample)) return "TypeScript";
-    if (/\bfunction\b|\bconst\b|\blet\b|=>/m.test(sample)) return "JavaScript";
+    if (/\b(def |import |from |elif |print\(|self\.)/m.test(sample)) return "Python";
+    if (/\b(public class|System\.out\.println|package |@Override|implements )/m.test(sample)) return "Java";
+    if (/\b(using |Console\.WriteLine|namespace |\bvar\b|\basync Task\b)/m.test(sample)) return "C#";
+    if (/(#include\s+<|std::|\bint\s+main\s*\(|\btemplate\s*<)/m.test(sample)) return "C++";
+    if (/\bfunc\s+\w+\s*\(|\bpackage\s+main\b|fmt\.|:=/m.test(sample)) return "Go";
+    if (/(\bfn\s+\w+\s*\(|\buse\s+\w+::|\blet\s+mut\b)/m.test(sample)) return "Rust";
+    if (/\binterface\b|\btype\s+\w+\s*=|:\s*\w+|\bimplements\b/.test(sample)) return "TypeScript";
+    if (/\bfunction\b|\bconst\b|\blet\b|=>|\bexport\b/.test(sample)) return "JavaScript";
     return "Other";
   };
 
@@ -84,7 +87,15 @@ export default function App() {
       const response = await fetch("/api/refactor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, language: detectedLanguage })
+        body: JSON.stringify({
+          code,
+          language: detectedLanguage,
+          options: {
+            detectSmells,
+            applySolid,
+            includeMetrics
+          }
+        })
       });
 
       if (!response.ok) {
@@ -126,6 +137,32 @@ export default function App() {
                 Upload file
               </label>
             </div>
+          </div>
+          <div className="options">
+            <label className="option">
+              <input
+                type="checkbox"
+                checked={detectSmells}
+                onChange={(event) => setDetectSmells(event.target.checked)}
+              />
+              Detect code smells
+            </label>
+            <label className="option">
+              <input
+                type="checkbox"
+                checked={applySolid}
+                onChange={(event) => setApplySolid(event.target.checked)}
+              />
+              Apply SOLID principles
+            </label>
+            <label className="option">
+              <input
+                type="checkbox"
+                checked={includeMetrics}
+                onChange={(event) => setIncludeMetrics(event.target.checked)}
+              />
+              Include software metrics summary
+            </label>
           </div>
           <div className="code-input">
             <CodeMirror

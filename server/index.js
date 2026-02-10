@@ -36,13 +36,20 @@ app.get("/api/models", async (req, res) => {
   }
 });
 
-const buildPrompt = (code, language) => {
+const buildPrompt = (code, language, options) => {
+  const goals = [];
+  if (options?.detectSmells) goals.push("Detect and address common code smells");
+  if (options?.applySolid) goals.push("Apply SOLID principles where appropriate");
+  if (options?.includeMetrics) goals.push("Include a brief software metrics summary");
+
+  const goalsLine = goals.length > 0 ? `Refactoring goals: ${goals.join("; ")}.` : "";
   return [
     "You are an expert refactoring assistant.",
     "Refactor the code for clarity, maintainability, and efficiency.",
     "Preserve behavior and do not introduce new dependencies.",
     "Return ONLY valid JSON with keys: refactoredCode (string) and explanation (array of short strings).",
     "Do not include markdown fences or extra text.",
+    goalsLine,
     `Language: ${language || "unspecified"}.`,
     "Code:",
     "```",
@@ -68,7 +75,7 @@ const extractJson = (text) => {
 };
 
 app.post("/api/refactor", async (req, res) => {
-  const { code = "", language = "" } = req.body || {};
+  const { code = "", language = "", options = {} } = req.body || {};
   if (!code.trim()) {
     return res.status(400).json({ error: "Code is required." });
   }
@@ -86,7 +93,7 @@ app.post("/api/refactor", async (req, res) => {
           contents: [
             {
               role: "user",
-              parts: [{ text: buildPrompt(code, language) }]
+              parts: [{ text: buildPrompt(code, language, options) }]
             }
           ],
           generationConfig: {

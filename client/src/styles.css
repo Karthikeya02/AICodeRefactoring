@@ -123,6 +123,24 @@ body {
   background: #0b1115;
 }
 
+.options {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+  color: var(--muted);
+}
+
+.option {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 14px;
+}
+
+.option input {
+  accent-color: var(--accent);
+}
+
 .code-input .cm-editor {
   font-family: "JetBrains Mono", monospace;
   font-size: 13px;
