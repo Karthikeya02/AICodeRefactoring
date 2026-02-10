@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import DiffViewer from "react-diff-viewer-continued";
+import { useEffect, useMemo, useRef, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
 import { python } from "@codemirror/lang-python";
@@ -16,10 +15,8 @@ export default function App() {
   const [explanation, setExplanation] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [detectSmells, setDetectSmells] = useState(true);
-  const [applySolid, setApplySolid] = useState(true);
-  const [includeMetrics, setIncludeMetrics] = useState(false);
-  const [splitView, setSplitView] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef(null);
 
   const hasOutput = refactored.trim().length > 0;
 
@@ -60,15 +57,24 @@ export default function App() {
   }, [language]);
 
   useEffect(() => {
-    const updateSplitView = () => {
-      if (typeof window === "undefined") return;
-      setSplitView(window.innerWidth > 900);
+    return () => {
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+      }
     };
-
-    updateSplitView();
-    window.addEventListener("resize", updateSplitView);
-    return () => window.removeEventListener("resize", updateSplitView);
   }, []);
+
+  const handleCopy = async () => {
+    if (!refactored.trim()) return;
+    try {
+      await navigator.clipboard.writeText(refactored);
+      setCopied(true);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setError("Copy failed. Please try again.");
+    }
+  };
 
   const handleFile = async (event) => {
     const file = event.target.files?.[0];
@@ -81,30 +87,72 @@ export default function App() {
   const handleRefactor = async () => {
     setLoading(true);
     setError("");
+    setRefactored("");
+    setExplanation([]);
     const detectedLanguage = detectLanguage(code);
     setLanguage(detectedLanguage);
     try {
-      const response = await fetch("/api/refactor", {
+      const response = await fetch("/api/refactor/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           code,
           language: detectedLanguage,
           options: {
-            detectSmells,
-            applySolid,
-            includeMetrics
+            detectSmells: true,
+            applySolid: true,
+            includeMetrics: true
           }
         })
       });
 
       if (!response.ok) {
-        throw new Error("Refactor failed. Try again.");
+        const errorText = await response.text();
+        throw new Error(errorText || "Refactor failed. Try again.");
       }
 
-      const data = await response.json();
-      setRefactored(data.refactoredCode || "");
-      setExplanation(Array.isArray(data.explanation) ? data.explanation : []);
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("Stream not supported in this browser.");
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      const parseStreamedText = (text) => {
+        const refMarker = "REFRACTORED_CODE:";
+        const explMarker = "EXPLANATION:";
+        const refIndex = text.indexOf(refMarker);
+        if (refIndex === -1) return null;
+        const afterRef = text.slice(refIndex + refMarker.length);
+        const explIndex = afterRef.indexOf(explMarker);
+        if (explIndex === -1) {
+          return { refactoredCode: afterRef.trim(), explanation: [] };
+        }
+        const refactoredCode = afterRef.slice(0, explIndex).trim();
+        const explanationBlock = afterRef.slice(explIndex + explMarker.length);
+        const explanation = explanationBlock
+          .split("\n")
+          .map((line) => line.replace(/^\s*[-*]\s*/, "").trim())
+          .filter(Boolean);
+        return { refactoredCode, explanation };
+      };
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parsed = parseStreamedText(buffer);
+        if (parsed?.refactoredCode) {
+          setRefactored(parsed.refactoredCode);
+        }
+        if (parsed?.explanation?.length) {
+            setExplanation(parsed.explanation.slice(0, 5));
+        }
+      }
+
+      const parsed = parseStreamedText(buffer) || {};
+      setRefactored(parsed.refactoredCode || "");
+        setExplanation(Array.isArray(parsed.explanation) ? parsed.explanation.slice(0, 5) : []);
     } catch (err) {
       setError(err.message || "Unexpected error.");
     } finally {
@@ -123,7 +171,7 @@ export default function App() {
           <h1>RefactorBot</h1>
           <p>AI-powered code refactoring assistant</p>
         </div>
-        <span className="pill">Gemini-ready</span>
+        <span className="pill">Gemini ready</span>
       </header>
 
       <main className="grid">
@@ -131,38 +179,11 @@ export default function App() {
           <div className="panel-header">
             <h2>Input</h2>
             <div className="controls">
-              <span className="detected">Detected: {language}</span>
               <label className="file-upload">
                 <input type="file" onChange={handleFile} />
                 Upload file
               </label>
             </div>
-          </div>
-          <div className="options">
-            <label className="option">
-              <input
-                type="checkbox"
-                checked={detectSmells}
-                onChange={(event) => setDetectSmells(event.target.checked)}
-              />
-              Detect code smells
-            </label>
-            <label className="option">
-              <input
-                type="checkbox"
-                checked={applySolid}
-                onChange={(event) => setApplySolid(event.target.checked)}
-              />
-              Apply SOLID principles
-            </label>
-            <label className="option">
-              <input
-                type="checkbox"
-                checked={includeMetrics}
-                onChange={(event) => setIncludeMetrics(event.target.checked)}
-              />
-              Include software metrics summary
-            </label>
           </div>
           <div className="code-input">
             <CodeMirror
@@ -193,15 +214,24 @@ export default function App() {
         <section className="panel diff">
           <div className="panel-header">
             <h2>Diff View</h2>
+            <button
+              className="secondary"
+              onClick={handleCopy}
+              disabled={!refactored.trim()}
+            >
+              {copied ? "Copied" : "Copy refactored"}
+            </button>
           </div>
-          <DiffViewer
-            oldValue={code}
-            newValue={refactored || "Refactored output will appear here."}
-            splitView={splitView}
-            useDarkTheme
-            showDiffOnly={false}
-            disableWordDiff
-          />
+          <div className="before-after">
+            <div className="code-block before">
+              <h3>Before</h3>
+              <pre>{code}</pre>
+            </div>
+            <div className="code-block after">
+              <h3>After</h3>
+              <pre>{refactored || "Refactored output will appear here."}</pre>
+            </div>
+          </div>
         </section>
       </main>
     </div>

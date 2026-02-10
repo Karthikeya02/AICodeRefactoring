@@ -99,13 +99,21 @@ body {
   border-radius: 8px;
 }
 
-.detected {
+.secondary {
+  background: transparent;
   border: 1px solid var(--border);
-  padding: 6px 12px;
-  border-radius: 999px;
-  color: var(--accent-soft);
-  font-size: 13px;
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: "Space Grotesk", sans-serif;
 }
+
+.secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 
 .file-upload {
   cursor: pointer;
@@ -123,23 +131,6 @@ body {
   background: #0b1115;
 }
 
-.options {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 16px;
-  color: var(--muted);
-}
-
-.option {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  font-size: 14px;
-}
-
-.option input {
-  accent-color: var(--accent);
-}
 
 .code-input .cm-editor {
   font-family: "JetBrains Mono", monospace;
@@ -182,6 +173,41 @@ body {
   overflow: hidden;
 }
 
+.before-after {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.code-block {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  min-height: 200px;
+}
+
+.code-block.before {
+  background: rgba(255, 122, 89, 0.08);
+}
+
+.code-block.after {
+  background: rgba(91, 192, 235, 0.12);
+}
+
+.code-block h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--accent-soft);
+}
+
+.code-block pre {
+  margin: 0;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
 .diff pre,
 .diff code {
   font-family: "JetBrains Mono", monospace;
@@ -215,5 +241,9 @@ body {
 
   .diff table {
     font-size: 12px;
+  }
+
+  .before-after {
+    grid-template-columns: 1fr;
   }
 }
