@@ -1,4 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import DiffViewer from "react-diff-viewer-continued";
+import CodeMirror from "@uiw/react-codemirror";
+import { javascript } from "@codemirror/lang-javascript";
+import { python } from "@codemirror/lang-python";
+import { java } from "@codemirror/lang-java";
+import { cpp } from "@codemirror/lang-cpp";
+import { rust } from "@codemirror/lang-rust";
+import { csharp } from "@replit/codemirror-lang-csharp";
+import { oneDark } from "@codemirror/theme-one-dark";
 
 const LANGUAGE_OPTIONS = [
   "JavaScript",
@@ -19,8 +28,43 @@ export default function App() {
   const [explanation, setExplanation] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [splitView, setSplitView] = useState(true);
 
   const hasOutput = refactored.trim().length > 0;
+
+  const languageExtension = useMemo(() => {
+    switch (language) {
+      case "JavaScript":
+        return javascript({ jsx: true });
+      case "TypeScript":
+        return javascript({ typescript: true });
+      case "Python":
+        return python();
+      case "Java":
+        return java();
+      case "C#":
+        return csharp();
+      case "C++":
+        return cpp();
+      case "Go":
+        return cpp();
+      case "Rust":
+        return rust();
+      default:
+        return javascript();
+    }
+  }, [language]);
+
+  useEffect(() => {
+    const updateSplitView = () => {
+      if (typeof window === "undefined") return;
+      setSplitView(window.innerWidth > 900);
+    };
+
+    updateSplitView();
+    window.addEventListener("resize", updateSplitView);
+    return () => window.removeEventListener("resize", updateSplitView);
+  }, []);
 
   const handleFile = async (event) => {
     const file = event.target.files?.[0];
@@ -86,11 +130,15 @@ export default function App() {
               </label>
             </div>
           </div>
-          <textarea
-            className="code-input"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-          />
+          <div className="code-input">
+            <CodeMirror
+              value={code}
+              height="260px"
+              theme={oneDark}
+              extensions={[languageExtension]}
+              onChange={(value) => setCode(value)}
+            />
+          </div>
           <button className="primary" onClick={handleRefactor} disabled={loading}>
             {loading ? "Refactoring..." : "Refactor"}
           </button>
@@ -112,16 +160,13 @@ export default function App() {
           <div className="panel-header">
             <h2>Diff View</h2>
           </div>
-          <div className="diff-grid">
-            <div>
-              <h3>Original</h3>
-              <pre>{code}</pre>
-            </div>
-            <div>
-              <h3>Refactored</h3>
-              <pre>{refactored || "Refactored output will appear here."}</pre>
-            </div>
-          </div>
+          <DiffViewer
+            oldValue={code}
+            newValue={refactored || "Refactored output will appear here."}
+            splitView={splitView}
+            useDarkTheme
+            showDiffOnly={false}
+          />
         </section>
       </main>
     </div>

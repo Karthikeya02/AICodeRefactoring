@@ -109,15 +109,21 @@ select,
 }
 
 .code-input {
-  width: 100%;
-  min-height: 240px;
-  font-family: "JetBrains Mono", monospace;
-  background: #0b1115;
-  color: var(--text);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 16px;
+  overflow: hidden;
   margin-bottom: 16px;
+  background: #0b1115;
+}
+
+.code-input .cm-editor {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 13px;
+}
+
+.code-input .cm-gutters {
+  background: #0b1115;
+  border-right: 1px solid var(--border);
 }
 
 .primary {
@@ -147,28 +153,25 @@ select,
   gap: 8px;
 }
 
-.diff-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+.diff {
+  overflow: hidden;
 }
 
-.diff-grid h3 {
-  margin: 0 0 8px;
-  color: var(--accent-soft);
-  font-size: 16px;
-}
-
-.diff-grid pre {
-  background: #0b1115;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
-  min-height: 220px;
-  max-height: 320px;
-  overflow: auto;
+.diff pre,
+.diff code {
   font-family: "JetBrains Mono", monospace;
   font-size: 13px;
+}
+
+.diff .diff-container {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: #0b1115;
+}
+
+.diff table {
+  font-family: "JetBrains Mono", monospace;
 }
 
 .error {
@@ -185,7 +188,7 @@ select,
     grid-column: auto;
   }
 
-  .diff-grid {
-    grid-template-columns: 1fr;
+  .diff table {
+    font-size: 12px;
   }
 }

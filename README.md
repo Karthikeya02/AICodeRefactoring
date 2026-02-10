@@ -6,6 +6,14 @@ RefactorBot is an AI-powered code refactoring assistant. This scaffold includes 
 - client: Vite + React app
 - server: Express API
 
+## Configure Gemini
+Create a server/.env file (see server/.env.example) with your Gemini API key:
+
+```
+GEMINI_API_KEY=your_key_here
+GEMINI_MODEL=gemini-1.5-flash
+```
+
 ## Run (dev)
 1) In one terminal:
    cd client
@@ -20,6 +28,5 @@ RefactorBot is an AI-powered code refactoring assistant. This scaffold includes 
 The client proxies /api requests to http://localhost:3001.
 
 ## Next steps
-- Wire the /api/refactor endpoint to Gemini
 - Add a real diff viewer
 - Improve language-aware refactoring prompts
