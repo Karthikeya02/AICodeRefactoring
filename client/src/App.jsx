@@ -200,6 +200,7 @@ export default function App() {
             splitView={splitView}
             useDarkTheme
             showDiffOnly={false}
+            disableWordDiff
           />
         </section>
       </main>
