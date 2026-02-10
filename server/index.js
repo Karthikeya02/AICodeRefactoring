@@ -5,20 +5,49 @@ import cors from "cors";
 const app = express();
 const port = process.env.PORT || 3001;
 const geminiApiKey = process.env.GEMINI_API_KEY;
-const geminiModel = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+const geminiModel = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const normalizeModelName = (modelName) => {
+  if (!modelName) return "gemini-2.5-flash";
+  return modelName.replace(/^models\//, "");
+};
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
+
+app.get("/api/models", async (req, res) => {
+  if (!geminiApiKey) {
+    return res.status(500).json({ error: "GEMINI_API_KEY is not configured." });
+  }
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${geminiApiKey}`
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(500).json({ error: errorText || "List models failed." });
+    }
+
+    const data = await response.json();
+    return res.json(data);
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Unexpected error." });
+  }
+});
 
 const buildPrompt = (code, language) => {
   return [
     "You are an expert refactoring assistant.",
     "Refactor the code for clarity, maintainability, and efficiency.",
     "Preserve behavior and do not introduce new dependencies.",
-    "Return JSON with keys: refactoredCode (string) and explanation (array of short strings).",
+    "Return ONLY valid JSON with keys: refactoredCode (string) and explanation (array of short strings).",
+    "Do not include markdown fences or extra text.",
     `Language: ${language || "unspecified"}.`,
     "Code:",
-    code
+    "```",
+    code,
+    "```"
   ].join("\n");
 };
 
@@ -49,7 +78,7 @@ app.post("/api/refactor", async (req, res) => {
 
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${normalizeModelName(geminiModel)}:generateContent?key=${geminiApiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -62,7 +91,8 @@ app.post("/api/refactor", async (req, res) => {
           ],
           generationConfig: {
             temperature: 0.2,
-            maxOutputTokens: 2048
+            maxOutputTokens: 2048,
+            responseMimeType: "application/json"
           }
         })
       }
@@ -70,7 +100,12 @@ app.post("/api/refactor", async (req, res) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      return res.status(500).json({ error: errorText || "Gemini request failed." });
+      console.error("Gemini error", response.status, errorText);
+      return res.status(500).json({
+        error: "Gemini request failed.",
+        status: response.status,
+        details: errorText
+      });
     }
 
     const data = await response.json();
@@ -89,6 +124,7 @@ app.post("/api/refactor", async (req, res) => {
       explanation: Array.isArray(parsed.explanation) ? parsed.explanation : []
     });
   } catch (error) {
+    console.error("Gemini request exception", error);
     return res.status(500).json({ error: error.message || "Unexpected error." });
   }
 });
