@@ -89,7 +89,6 @@ body {
   align-items: center;
 }
 
-select,
 .file-upload,
 .primary {
   font-family: "Space Grotesk", sans-serif;
@@ -98,6 +97,14 @@ select,
   color: var(--text);
   padding: 8px 12px;
   border-radius: 8px;
+}
+
+.detected {
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: 999px;
+  color: var(--accent-soft);
+  font-size: 13px;
 }
 
 .file-upload {

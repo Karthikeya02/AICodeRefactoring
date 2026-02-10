@@ -9,20 +9,8 @@ import { rust } from "@codemirror/lang-rust";
 import { csharp } from "@replit/codemirror-lang-csharp";
 import { oneDark } from "@codemirror/theme-one-dark";
 
-const LANGUAGE_OPTIONS = [
-  "JavaScript",
-  "TypeScript",
-  "Python",
-  "Java",
-  "C#",
-  "C++",
-  "Go",
-  "Rust",
-  "Other"
-];
-
 export default function App() {
-  const [language, setLanguage] = useState("JavaScript");
+  const [language, setLanguage] = useState("Other");
   const [code, setCode] = useState("// Paste code here\n");
   const [refactored, setRefactored] = useState("");
   const [explanation, setExplanation] = useState([]);
@@ -31,6 +19,19 @@ export default function App() {
   const [splitView, setSplitView] = useState(true);
 
   const hasOutput = refactored.trim().length > 0;
+
+  const detectLanguage = (input) => {
+    const sample = input || "";
+    if (/(def |import |from |elif |print\()/m.test(sample)) return "Python";
+    if (/\b(public class|System\.out\.println|package )/m.test(sample)) return "Java";
+    if (/\b(using |Console\.WriteLine|namespace )/m.test(sample)) return "C#";
+    if (/#include\s+<|std::|\bint\s+main\s*\(/m.test(sample)) return "C++";
+    if (/\bfunc\s+\w+\s*\(|\bpackage\s+main\b|fmt\./m.test(sample)) return "Go";
+    if (/\bfn\s+\w+\s*\(|\buse\s+\w+::/m.test(sample)) return "Rust";
+    if (/\binterface\b|\btype\s+\w+\s*=|:\s*\w+/m.test(sample)) return "TypeScript";
+    if (/\bfunction\b|\bconst\b|\blet\b|=>/m.test(sample)) return "JavaScript";
+    return "Other";
+  };
 
   const languageExtension = useMemo(() => {
     switch (language) {
@@ -77,11 +78,13 @@ export default function App() {
   const handleRefactor = async () => {
     setLoading(true);
     setError("");
+    const detectedLanguage = detectLanguage(code);
+    setLanguage(detectedLanguage);
     try {
       const response = await fetch("/api/refactor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, language })
+        body: JSON.stringify({ code, language: detectedLanguage })
       });
 
       if (!response.ok) {
@@ -117,13 +120,7 @@ export default function App() {
           <div className="panel-header">
             <h2>Input</h2>
             <div className="controls">
-              <select value={language} onChange={(e) => setLanguage(e.target.value)}>
-                {LANGUAGE_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+              <span className="detected">Detected: {language}</span>
               <label className="file-upload">
                 <input type="file" onChange={handleFile} />
                 Upload file
