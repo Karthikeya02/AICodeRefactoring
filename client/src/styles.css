@@ -180,6 +180,12 @@ body {
   margin-bottom: 16px;
 }
 
+.language-label {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
 .code-block {
   border: 1px solid var(--border);
   border-radius: 12px;

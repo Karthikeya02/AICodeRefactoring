@@ -51,11 +51,11 @@ const buildPrompt = (code, language, options) => {
     "Refactor the code for clarity, maintainability, and efficiency.",
     "Preserve behavior and do not introduce new dependencies.",
     "Keep the code in the same programming language. Do not translate it.",
+    "If you cannot refactor in the same language, return the original code unchanged.",
     "Return ONLY valid JSON with keys: refactoredCode (string) and explanation (array of short strings).",
     "Keep explanation concise: 3-5 bullet items, max 12 words each.",
     "Do not include markdown fences or extra text.",
     goalsLine,
-    `Language: ${language || "unspecified"}.`,
     "Code:",
     "```",
     code,
@@ -78,19 +78,55 @@ const buildPromptText = (code, language, options) => {
     "Refactor the code for clarity, maintainability, and efficiency.",
     "Preserve behavior and do not introduce new dependencies.",
     "Keep the code in the same programming language. Do not translate it.",
+    "If you cannot refactor in the same language, return the original code unchanged.",
     "Return output in this exact plain-text format:",
+    "LANGUAGE:",
+    "<language>",
     "REFRACTORED_CODE:",
     "<code>",
     "EXPLANATION:",
     "- 3 to 5 concise bullets, max 12 words each",
     "Do not include markdown fences or extra text.",
+    "Do not use triple backticks in the output.",
     goalsLine,
-    `Language: ${language || "unspecified"}.`,
     "Code:",
     "```",
     code,
     "```"
   ].join("\n");
+};
+
+const parsePlainTextResponse = (text) => {
+  const langMarker = "LANGUAGE:";
+  const refMarker = "REFRACTORED_CODE:";
+  const explMarker = "EXPLANATION:";
+  const refIndex = text.indexOf(refMarker);
+  if (refIndex === -1) return null;
+  const langIndex = text.indexOf(langMarker);
+  let language = "";
+  if (langIndex !== -1 && langIndex < refIndex) {
+    const langBlock = text.slice(langIndex + langMarker.length, refIndex).trim();
+    language = langBlock.split("\n")[0]?.trim() || "";
+  }
+  const afterRef = text.slice(refIndex + refMarker.length);
+  const explIndex = afterRef.indexOf(explMarker);
+  if (explIndex === -1) {
+    return { language, refactoredCode: afterRef.trim(), explanation: [] };
+  }
+  const refactoredCode = afterRef.slice(0, explIndex).trim();
+  const explanationBlock = afterRef.slice(explIndex + explMarker.length);
+  const explanation = explanationBlock
+    .split("\n")
+    .map((line) => line.replace(/^\s*[-*]\s*/, "").trim())
+    .filter(Boolean);
+  return { language, refactoredCode, explanation };
+};
+
+const stripCodeFences = (text) => {
+  if (!text) return "";
+  const fenceMatch = text.match(/```[a-zA-Z0-9_-]*\n([\s\S]*?)\n```/);
+  if (fenceMatch) return fenceMatch[1].trim();
+  return text.trim();
 };
 
 const extractJson = (text) => {
@@ -236,8 +272,32 @@ app.post("/api/refactor/stream", async (req, res) => {
 
     const data = await response.json();
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const parsed = parsePlainTextResponse(text);
+    const cleanedCode = stripCodeFences(parsed?.refactoredCode || "");
+
+    let finalCode = cleanedCode;
+    let finalExplanation = Array.isArray(parsed?.explanation) ? parsed.explanation : [];
+    const finalLanguage = parsed?.language?.trim() || "";
+
+    if (!finalCode.trim()) {
+      finalCode = code;
+      finalExplanation = [
+        "Model response format invalid; returning original code.",
+        "Try again or reduce input size."
+      ];
+    }
+
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    return res.send(text);
+    return res.send(
+      [
+        "LANGUAGE:",
+        finalLanguage,
+        "REFRACTORED_CODE:",
+        finalCode,
+        "EXPLANATION:",
+        ...finalExplanation.map((item) => `- ${item}`)
+      ].join("\n")
+    );
   } catch (error) {
     console.error("Gemini request exception", error);
     return res.status(500).send(error.message || "Unexpected error.");

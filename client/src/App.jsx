@@ -13,6 +13,7 @@ export default function App() {
   const [code, setCode] = useState("// Paste code here\n");
   const [refactored, setRefactored] = useState("");
   const [explanation, setExplanation] = useState([]);
+  const [responseLanguage, setResponseLanguage] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
@@ -89,6 +90,7 @@ export default function App() {
     setError("");
     setRefactored("");
     setExplanation([]);
+    setResponseLanguage("");
     const detectedLanguage = detectLanguage(code);
     setLanguage(detectedLanguage);
     try {
@@ -119,14 +121,21 @@ export default function App() {
       const decoder = new TextDecoder();
       let buffer = "";
       const parseStreamedText = (text) => {
+        const langMarker = "LANGUAGE:";
         const refMarker = "REFRACTORED_CODE:";
         const explMarker = "EXPLANATION:";
         const refIndex = text.indexOf(refMarker);
         if (refIndex === -1) return null;
+        const langIndex = text.indexOf(langMarker);
+        let detected = "";
+        if (langIndex !== -1 && langIndex < refIndex) {
+          const langBlock = text.slice(langIndex + langMarker.length, refIndex).trim();
+          detected = langBlock.split("\n")[0]?.trim() || "";
+        }
         const afterRef = text.slice(refIndex + refMarker.length);
         const explIndex = afterRef.indexOf(explMarker);
         if (explIndex === -1) {
-          return { refactoredCode: afterRef.trim(), explanation: [] };
+          return { language: detected, refactoredCode: afterRef.trim(), explanation: [] };
         }
         const refactoredCode = afterRef.slice(0, explIndex).trim();
         const explanationBlock = afterRef.slice(explIndex + explMarker.length);
@@ -134,7 +143,7 @@ export default function App() {
           .split("\n")
           .map((line) => line.replace(/^\s*[-*]\s*/, "").trim())
           .filter(Boolean);
-        return { refactoredCode, explanation };
+        return { language: detected, refactoredCode, explanation };
       };
 
       while (true) {
@@ -145,14 +154,23 @@ export default function App() {
         if (parsed?.refactoredCode) {
           setRefactored(parsed.refactoredCode);
         }
+          if (parsed?.language) {
+            setResponseLanguage(parsed.language);
+          }
         if (parsed?.explanation?.length) {
-            setExplanation(parsed.explanation.slice(0, 5));
+            const nextExplanation = parsed.explanation.slice(0, 5);
+            setExplanation(parsed.language ? [
+              `Language: ${parsed.language}`,
+              ...nextExplanation
+            ] : nextExplanation);
         }
       }
 
       const parsed = parseStreamedText(buffer) || {};
       setRefactored(parsed.refactoredCode || "");
-        setExplanation(Array.isArray(parsed.explanation) ? parsed.explanation.slice(0, 5) : []);
+      if (parsed.language) setResponseLanguage(parsed.language);
+      const finalExplanation = Array.isArray(parsed.explanation) ? parsed.explanation.slice(0, 5) : [];
+      setExplanation(parsed.language ? [`Language: ${parsed.language}`, ...finalExplanation] : finalExplanation);
     } catch (err) {
       setError(err.message || "Unexpected error.");
     } finally {
@@ -222,6 +240,9 @@ export default function App() {
               {copied ? "Copied" : "Copy refactored"}
             </button>
           </div>
+          {responseLanguage && (
+            <div className="language-label">Language: {responseLanguage}</div>
+          )}
           <div className="before-after">
             <div className="code-block before">
               <h3>Before</h3>
