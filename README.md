@@ -1,6 +1,6 @@
 # RefactorBot
 
-RefactorBot is an AI-powered code refactoring assistant. This scaffold includes a Vite + React client and an Express server with a stubbed refactor endpoint.
+RefactorBot is an AI-powered code refactoring assistant built with a Vite + React client and an Express server.
 
 ## Structure
 - client: Vite + React app
@@ -27,6 +27,10 @@ GEMINI_MODEL=models/gemini-2.5-flash-lite
 
 The client proxies /api requests to http://localhost:3001.
 
-## Next steps
-- Add a real diff viewer
-- Improve language-aware refactoring prompts
+## Current features
+- Paste code and upload a source file
+- Refactor via Gemini API
+- Streaming response handling
+- Explanation panel with concise bullets
+- Git-style split diff view
+- Copy original and copy refactored output
