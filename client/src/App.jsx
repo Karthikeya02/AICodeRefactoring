@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import DiffViewer from "react-diff-viewer-continued";
 import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
 import { python } from "@codemirror/lang-python";
@@ -16,10 +17,42 @@ export default function App() {
   const [responseLanguage, setResponseLanguage] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [copiedRefactored, setCopiedRefactored] = useState(false);
+  const [copiedOriginal, setCopiedOriginal] = useState(false);
+  const [splitView, setSplitView] = useState(true);
+  const [isStable, setIsStable] = useState(false);
+  const [forceAnotherPass, setForceAnotherPass] = useState(false);
+  const [similarity, setSimilarity] = useState(0);
   const copyTimerRef = useRef(null);
 
   const hasOutput = refactored.trim().length > 0;
+
+  const sanitizeExplanation = (items) => {
+    const blockedPattern = /cyclomatic|complexity|software\s*metrics?|smells\s*detected|maintainability\s*index|halstead/i;
+    return (Array.isArray(items) ? items : []).filter((item) => !blockedPattern.test(item));
+  };
+
+  const normalizeCode = (text) =>
+    (text || "")
+      .replace(/\r\n/g, "\n")
+      .replace(/[ \t]+/g, " ")
+      .trim();
+
+  const estimateSimilarity = (source, target) => {
+    const a = normalizeCode(source);
+    const b = normalizeCode(target);
+    if (!a && !b) return 100;
+    if (!a || !b) return 0;
+    if (a === b) return 100;
+
+    const aLines = a.split("\n");
+    const bSet = new Set(b.split("\n"));
+    let shared = 0;
+    for (const line of aLines) {
+      if (bSet.has(line)) shared += 1;
+    }
+    return Math.round((shared / Math.max(aLines.length, 1)) * 100);
+  };
 
   const detectLanguage = (input) => {
     const sample = input || "";
@@ -57,6 +90,52 @@ export default function App() {
     }
   }, [language]);
 
+  const gitDiffStyles = useMemo(
+    () => ({
+      variables: {
+        dark: {
+          diffViewerBackground: "#0d1117",
+          diffViewerColor: "#c9d1d9",
+          addedBackground: "#12261a",
+          addedColor: "#d2ffd8",
+          removedBackground: "#2d1419",
+          removedColor: "#ffd7dd",
+          wordAddedBackground: "#1f4f2d",
+          wordRemovedBackground: "#6e1f28",
+          addedGutterBackground: "#163021",
+          removedGutterBackground: "#3a1b21",
+          gutterBackground: "#161b22",
+          gutterBackgroundDark: "#161b22",
+          highlightBackground: "#1f2a36",
+          highlightGutterBackground: "#1f2a36",
+          codeFoldGutterBackground: "#161b22",
+          codeFoldBackground: "#0d1117"
+        }
+      },
+      diffContainer: {
+        lineHeight: "1.55"
+      },
+      gutter: {
+        minWidth: "44px",
+        textAlign: "right",
+        paddingRight: "10px"
+      },
+      lineNumber: {
+        color: "#8b949e"
+      },
+      line: {
+        fontFamily: "JetBrains Mono, monospace",
+        fontSize: "13px"
+      },
+      marker: {
+        userSelect: "none",
+        fontWeight: 700,
+        width: "22px"
+      }
+    }),
+    []
+  );
+
   useEffect(() => {
     return () => {
       if (copyTimerRef.current) {
@@ -65,13 +144,50 @@ export default function App() {
     };
   }, []);
 
-  const handleCopy = async () => {
+  useEffect(() => {
+    setIsStable(false);
+    setForceAnotherPass(false);
+    setSimilarity(0);
+  }, [code]);
+
+  useEffect(() => {
+    const updateSplitView = () => {
+      if (typeof window === "undefined") return;
+      setSplitView(window.innerWidth > 900);
+    };
+
+    updateSplitView();
+    window.addEventListener("resize", updateSplitView);
+    return () => window.removeEventListener("resize", updateSplitView);
+  }, []);
+
+  const resetCopiedFlags = () => {
+    setCopiedRefactored(false);
+    setCopiedOriginal(false);
+  };
+
+  const handleCopyRefactored = async () => {
     if (!refactored.trim()) return;
     try {
       await navigator.clipboard.writeText(refactored);
-      setCopied(true);
+      resetCopiedFlags();
+      setCopiedRefactored(true);
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
-      copyTimerRef.current = setTimeout(() => setCopied(false), 1500);
+      copyTimerRef.current = setTimeout(resetCopiedFlags, 1500);
+    } catch {
+      setError("Copy failed. Please try again.");
+    }
+  };
+
+  const handleCopyOriginal = async () => {
+    if (!code.trim()) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      resetCopiedFlags();
+      setCopiedOriginal(true);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(resetCopiedFlags, 1500);
+      setError("");
     } catch {
       setError("Copy failed. Please try again.");
     }
@@ -103,7 +219,7 @@ export default function App() {
           options: {
             detectSmells: true,
             applySolid: true,
-            includeMetrics: true
+            includeMetrics: false
           }
         })
       });
@@ -158,19 +274,27 @@ export default function App() {
             setResponseLanguage(parsed.language);
           }
         if (parsed?.explanation?.length) {
-            const nextExplanation = parsed.explanation.slice(0, 5);
-            setExplanation(parsed.language ? [
-              `Language: ${parsed.language}`,
-              ...nextExplanation
-            ] : nextExplanation);
+            const nextExplanation = sanitizeExplanation(parsed.explanation).slice(0, 5);
+            setExplanation(nextExplanation);
         }
       }
 
       const parsed = parseStreamedText(buffer) || {};
       setRefactored(parsed.refactoredCode || "");
       if (parsed.language) setResponseLanguage(parsed.language);
-      const finalExplanation = Array.isArray(parsed.explanation) ? parsed.explanation.slice(0, 5) : [];
-      setExplanation(parsed.language ? [`Language: ${parsed.language}`, ...finalExplanation] : finalExplanation);
+      const finalExplanation = sanitizeExplanation(parsed.explanation).slice(0, 5);
+      setExplanation(finalExplanation);
+
+      const sim = estimateSimilarity(code, parsed.refactoredCode || "");
+      setSimilarity(sim);
+      const stable = sim >= 98;
+      setIsStable(stable);
+      if (stable) {
+        setExplanation((prev) => [
+          "Code appears stable; further refactoring may not help much.",
+          ...prev
+        ].slice(0, 5));
+      }
     } catch (err) {
       setError(err.message || "Unexpected error.");
     } finally {
@@ -182,6 +306,16 @@ export default function App() {
     return hasOutput ? explanation : ["No refactor result yet."];
   }, [hasOutput, explanation]);
 
+  const statusText = loading
+    ? "Refactoring..."
+    : error
+      ? "Error"
+      : isStable
+        ? "Stable"
+        : "Ready";
+
+  const refactorDisabled = loading || (isStable && !forceAnotherPass);
+
   return (
     <div className="page">
       <header className="topbar">
@@ -189,7 +323,6 @@ export default function App() {
           <h1>RefactorBot</h1>
           <p>AI-powered code refactoring assistant</p>
         </div>
-        <span className="pill">Gemini ready</span>
       </header>
 
       <main className="grid">
@@ -212,9 +345,23 @@ export default function App() {
               onChange={(value) => setCode(value)}
             />
           </div>
-          <button className="primary" onClick={handleRefactor} disabled={loading}>
+          <button className="primary" onClick={handleRefactor} disabled={refactorDisabled}>
             {loading ? "Refactoring..." : "Refactor"}
           </button>
+          <p className={`status-line ${error ? "error-state" : ""}`}>Status: {statusText}</p>
+          {isStable && (
+            <div className="stability-box">
+              <p>Similarity: {similarity}% (code appears stable).</p>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={forceAnotherPass}
+                  onChange={(event) => setForceAnotherPass(event.target.checked)}
+                />
+                Force another pass
+              </label>
+            </div>
+          )}
           {error && <p className="error">{error}</p>}
         </section>
 
@@ -222,6 +369,9 @@ export default function App() {
           <div className="panel-header">
             <h2>Explanation</h2>
           </div>
+          <p className="caution-note">
+            AI refactors may be imperfect. Review output before using in production.
+          </p>
           <ul className="explanation">
             {placeholderExplanation.map((item, index) => (
               <li key={`${item}-${index}`}>{item}</li>
@@ -232,26 +382,32 @@ export default function App() {
         <section className="panel diff">
           <div className="panel-header">
             <h2>Diff View</h2>
-            <button
-              className="secondary"
-              onClick={handleCopy}
-              disabled={!refactored.trim()}
-            >
-              {copied ? "Copied" : "Copy refactored"}
-            </button>
+            <div className="actions">
+              <button className="secondary" onClick={handleCopyOriginal} disabled={!code.trim()}>
+                {copiedOriginal ? "Copied" : "Copy original"}
+              </button>
+              <button
+                className="secondary"
+                onClick={handleCopyRefactored}
+                disabled={!refactored.trim()}
+              >
+                {copiedRefactored ? "Copied" : "Copy refactored"}
+              </button>
+            </div>
           </div>
           {responseLanguage && (
             <div className="language-label">Language: {responseLanguage}</div>
           )}
-          <div className="before-after">
-            <div className="code-block before">
-              <h3>Before</h3>
-              <pre>{code}</pre>
-            </div>
-            <div className="code-block after">
-              <h3>After</h3>
-              <pre>{refactored || "Refactored output will appear here."}</pre>
-            </div>
+          <div className="git-diff-wrap">
+            <DiffViewer
+              oldValue={code}
+              newValue={refactored || "Refactored output will appear here."}
+              splitView={splitView}
+              useDarkTheme
+              showDiffOnly={false}
+              disableWordDiff
+              styles={gitDiffStyles}
+            />
           </div>
         </section>
       </main>

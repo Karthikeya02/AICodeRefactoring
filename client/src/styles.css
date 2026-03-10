@@ -48,16 +48,6 @@ body {
   color: var(--muted);
 }
 
-.pill {
-  border: 1px solid var(--border);
-  padding: 6px 12px;
-  border-radius: 999px;
-  color: var(--accent-soft);
-  font-size: 14px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
 .grid {
   display: grid;
   gap: 24px;
@@ -86,6 +76,12 @@ body {
 .controls {
   display: flex;
   gap: 12px;
+  align-items: center;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
   align-items: center;
 }
 
@@ -161,6 +157,36 @@ body {
   box-shadow: 0 8px 20px rgba(255, 122, 89, 0.35);
 }
 
+.status-line {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.status-line.error-state {
+  color: #f4c178;
+}
+
+.stability-box {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(18, 38, 26, 0.45);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.stability-box p {
+  margin: 0 0 6px;
+}
+
+.stability-box label {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .explanation {
   margin: 0;
   padding-left: 20px;
@@ -169,15 +195,14 @@ body {
   gap: 8px;
 }
 
-.diff {
-  overflow: hidden;
+.caution-note {
+  margin: 0 0 10px;
+  color: #f4c178;
+  font-size: 13px;
 }
 
-.before-after {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin-bottom: 16px;
+.diff {
+  overflow: hidden;
 }
 
 .language-label {
@@ -186,32 +211,11 @@ body {
   font-size: 14px;
 }
 
-.code-block {
+.git-diff-wrap {
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 12px;
-  min-height: 200px;
-}
-
-.code-block.before {
-  background: rgba(255, 122, 89, 0.08);
-}
-
-.code-block.after {
-  background: rgba(91, 192, 235, 0.12);
-}
-
-.code-block h3 {
-  margin: 0 0 8px;
-  font-size: 14px;
-  color: var(--accent-soft);
-}
-
-.code-block pre {
-  margin: 0;
-  font-family: "JetBrains Mono", monospace;
-  font-size: 13px;
-  white-space: pre-wrap;
+  overflow: auto;
+  background: #0d1117;
 }
 
 .diff pre,
@@ -223,12 +227,17 @@ body {
 .diff .diff-container {
   border-radius: 12px;
   overflow: hidden;
-  border: 1px solid var(--border);
-  background: #0b1115;
+  border: none;
+  background: #0d1117;
 }
 
 .diff table {
   font-family: "JetBrains Mono", monospace;
+  border-collapse: collapse;
+}
+
+.diff td {
+  border-top: 1px solid rgba(110, 118, 129, 0.2);
 }
 
 .error {
@@ -249,7 +258,4 @@ body {
     font-size: 12px;
   }
 
-  .before-after {
-    grid-template-columns: 1fr;
-  }
 }

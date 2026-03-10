@@ -40,10 +40,6 @@ const buildPrompt = (code, language, options) => {
   const goals = [];
   if (options?.detectSmells) goals.push("Detect and address common code smells");
   if (options?.applySolid) goals.push("Apply SOLID principles where appropriate");
-  if (options?.includeMetrics) {
-    goals.push("Include a brief software metrics summary");
-    goals.push("Software Metrics: smells detected, Cyclomatic Complexity");
-  }
 
   const goalsLine = goals.length > 0 ? `Refactoring goals: ${goals.join("; ")}.` : "";
   return [
@@ -53,7 +49,7 @@ const buildPrompt = (code, language, options) => {
     "Keep the code in the same programming language. Do not translate it.",
     "If you cannot refactor in the same language, return the original code unchanged.",
     "Return ONLY valid JSON with keys: refactoredCode (string) and explanation (array of short strings).",
-    "Keep explanation concise: 3-5 bullet items, max 12 words each.",
+    "Keep explanation concise: 4-7 bullet items, max 15 words each.",
     "Do not include markdown fences or extra text.",
     goalsLine,
     "Code:",
@@ -67,10 +63,6 @@ const buildPromptText = (code, language, options) => {
   const goals = [];
   if (options?.detectSmells) goals.push("Detect and address common code smells");
   if (options?.applySolid) goals.push("Apply SOLID principles where appropriate");
-  if (options?.includeMetrics) {
-    goals.push("Include a brief software metrics summary");
-    goals.push("Software Metrics: smells detected, Cyclomatic Complexity");
-  }
 
   const goalsLine = goals.length > 0 ? `Refactoring goals: ${goals.join("; ")}.` : "";
   return [
@@ -85,7 +77,7 @@ const buildPromptText = (code, language, options) => {
     "REFRACTORED_CODE:",
     "<code>",
     "EXPLANATION:",
-    "- 3 to 5 concise bullets, max 12 words each",
+    "- 4 to 7 concise bullets, max 15 words each",
     "Do not include markdown fences or extra text.",
     "Do not use triple backticks in the output.",
     goalsLine,
@@ -171,6 +163,11 @@ const extractFieldsFallback = (text) => {
   return { refactoredCode, explanation };
 };
 
+const sanitizeExplanation = (items) => {
+  const blockedPattern = /cyclomatic|complexity|software\s*metrics?|smells\s*detected|maintainability\s*index|halstead/i;
+  return (Array.isArray(items) ? items : []).filter((item) => !blockedPattern.test(item));
+};
+
 app.post("/api/refactor", async (req, res) => {
   const { code = "", language = "", options = {} } = req.body || {};
   if (!code.trim()) {
@@ -225,7 +222,7 @@ app.post("/api/refactor", async (req, res) => {
 
     return res.json({
       refactoredCode: parsed.refactoredCode,
-      explanation: Array.isArray(parsed.explanation) ? parsed.explanation : []
+      explanation: sanitizeExplanation(parsed.explanation)
     });
   } catch (error) {
     console.error("Gemini request exception", error);
@@ -276,7 +273,7 @@ app.post("/api/refactor/stream", async (req, res) => {
     const cleanedCode = stripCodeFences(parsed?.refactoredCode || "");
 
     let finalCode = cleanedCode;
-    let finalExplanation = Array.isArray(parsed?.explanation) ? parsed.explanation : [];
+    let finalExplanation = sanitizeExplanation(parsed?.explanation);
     const finalLanguage = parsed?.language?.trim() || "";
 
     if (!finalCode.trim()) {
