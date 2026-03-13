@@ -9,6 +9,11 @@ import { rust } from "@codemirror/lang-rust";
 import { csharp } from "@replit/codemirror-lang-csharp";
 import { oneDark } from "@codemirror/theme-one-dark";
 
+const MODEL_OPTIONS = [
+  { label: "Gemini 2.5 Flash", value: "models/gemini-2.5-flash" },
+  { label: "Gemini 2.5 Flash Lite", value: "models/gemini-2.5-flash-lite" }
+];
+
 export default function App() {
   const [language, setLanguage] = useState("Other");
   const [code, setCode] = useState("// Paste code here\n");
@@ -17,6 +22,7 @@ export default function App() {
   const [responseLanguage, setResponseLanguage] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [selectedModel, setSelectedModel] = useState("models/gemini-2.5-flash-lite");
   const [copiedRefactored, setCopiedRefactored] = useState(false);
   const [copiedOriginal, setCopiedOriginal] = useState(false);
   const [splitView, setSplitView] = useState(true);
@@ -223,6 +229,7 @@ export default function App() {
         body: JSON.stringify({
           code,
           language: detectedLanguage,
+          model: selectedModel,
           options: {
             detectSmells: true,
             applySolid: true,
@@ -337,6 +344,17 @@ export default function App() {
           <div className="panel-header">
             <h2>Input</h2>
             <div className="controls">
+              <select
+                value={selectedModel}
+                onChange={(event) => setSelectedModel(event.target.value)}
+                aria-label="AI model"
+              >
+                {MODEL_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
               <label className="file-upload">
                 <input type="file" onChange={handleFile} />
                 Upload file

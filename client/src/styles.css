@@ -86,6 +86,7 @@ body {
 }
 
 .file-upload,
+.controls select,
 .primary {
   font-family: "Space Grotesk", sans-serif;
   background: #0f151a;

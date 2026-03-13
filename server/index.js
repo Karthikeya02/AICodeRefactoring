@@ -6,9 +6,21 @@ const app = express();
 const port = process.env.PORT || 3001;
 const geminiApiKey = process.env.GEMINI_API_KEY;
 const geminiModel = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
+const allowedModels = new Set([
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite"
+]);
 const normalizeModelName = (modelName) => {
   if (!modelName) return "gemini-2.5-flash-lite";
   return modelName.replace(/^models\//, "");
+};
+
+const resolveModelName = (requestedModel) => {
+  const envModel = normalizeModelName(geminiModel);
+  const requested = normalizeModelName(requestedModel);
+  if (allowedModels.has(requested)) return requested;
+  if (allowedModels.has(envModel)) return envModel;
+  return "gemini-2.5-flash-lite";
 };
 
 app.use(cors());
@@ -54,14 +66,14 @@ const buildPromptText = (code, options) => {
     "REFRACTORED_CODE:",
     "<code>",
     "EXPLANATION:",
-    "- concise bullets",
-    "- The first bullets must be per-function/method code smell findings.",
-    "- For each refactored function/method, include one bullet in this style:",
-    "- <function_or_method_name>: <code smell(s)> -> <refactor applied>",
-    "- Include only functions with concrete smells and concrete refactor actions.",
-    "- At most one bullet per function/method.",
-    "- Never include contradictory bullets for the same function.",
-    "- Do not use 'no direct refactoring', 'implicitly', or similar weak statements.",
+    "- Return concise bullets in three sections (in this order):",
+    "- [Smell] <function_or_method_name>: <code smell> -> <refactor applied>",
+    "- [Action] <specific refactor action performed>",
+    "- [Benefit] <maintainability/readability benefit>",
+    "- Include at least 2 [Smell] bullets when smells are found.",
+    "- Include 1-3 [Action] bullets and 1-2 [Benefit] bullets.",
+    "- Keep bullets concrete and non-contradictory.",
+    "- Do not use weak statements like 'no direct refactoring' or 'implicitly'.",
     "- Use concrete smell names (e.g., long method, duplicated logic, poor naming, dead code, large conditional).",
     "Do not include markdown fences or extra text.",
     "Do not use triple backticks in the output.",
@@ -107,7 +119,7 @@ const stripCodeFences = (text) => {
 };
 
 const sanitizeExplanation = (items) => {
-  const blockedPattern = /cyclomatic|complexity|software\s*metrics?|maintainability\s*index|halstead/i;
+  const blockedPattern = /cyclomatic|complexity|software\s*metrics?|maintainability\s*index|halstead|no major smell|minimal cleanup|no direct refactoring|implicitly/i;
   const filtered = (Array.isArray(items) ? items : []).filter((item) => !blockedPattern.test(item));
   const seen = new Set();
   const deduped = filtered.filter((item) => {
@@ -185,12 +197,72 @@ const prioritizeSmellExplanation = (items) => {
     }
   }
 
-  const bestFunctionBullets = [...groupedByFunction.values()].map((entry) => entry.text);
+  const bestFunctionBullets = [...groupedByFunction.values()]
+    .filter((entry) => entry.score >= 0)
+    .map((entry) => entry.text);
+
+  if (bestFunctionBullets.length === 0 && passthrough.length === 0 && rest.length === 0) {
+    return ["Smell analysis: no concrete smell/refactor pairs were detected in this pass."];
+  }
+
   return [...bestFunctionBullets, ...passthrough, ...rest];
 };
 
+const formatStructuredExplanation = (items) => {
+  const list = Array.isArray(items) ? items : [];
+  const hasLabel = (text, label) => new RegExp(`^\\[${label}\\]`, "i").test(text);
+  const smellPattern = /->|long method|duplicated logic|poor naming|dead code|large conditional|smell/i;
+  const actionPattern = /extract|rename|split|remove|inline|simplif|decompose|introduc|encapsulat/i;
+  const benefitPattern = /readability|maintainability|clarity|testability|modular|cohesion|reusab|less complex|easier/i;
+
+  const smell = [];
+  const action = [];
+  const benefit = [];
+
+  for (const raw of list) {
+    const item = raw.trim();
+    if (!item) continue;
+
+    if (hasLabel(item, "Smell")) {
+      smell.push(item);
+      continue;
+    }
+    if (hasLabel(item, "Action")) {
+      action.push(item);
+      continue;
+    }
+    if (hasLabel(item, "Benefit")) {
+      benefit.push(item);
+      continue;
+    }
+
+    if (smellPattern.test(item)) {
+      smell.push(`[Smell] ${item}`);
+    } else if (actionPattern.test(item)) {
+      action.push(`[Action] ${item}`);
+    } else if (benefitPattern.test(item)) {
+      benefit.push(`[Benefit] ${item}`);
+    } else {
+      action.push(`[Action] ${item}`);
+    }
+  }
+
+  if (smell.length > 0 && action.length === 0) {
+    action.push("[Action] Applied targeted refactors based on detected smells.");
+  }
+  if (benefit.length === 0) {
+    benefit.push("[Benefit] Improves readability and maintainability while preserving behavior.");
+  }
+
+  return [...smell, ...action, ...benefit].map((item) =>
+    item
+      .replace(/^\[(Smell|Action|Benefit)\]\s*/i, "")
+      .replace(/^(Smell|Action|Benefit):\s*/i, "")
+  );
+};
+
 app.post("/api/refactor/stream", async (req, res) => {
-  const { code = "", options = {} } = req.body || {};
+  const { code = "", model = "", options = {} } = req.body || {};
   if (!code.trim()) {
     return res.status(400).send("Code is required.");
   }
@@ -199,8 +271,9 @@ app.post("/api/refactor/stream", async (req, res) => {
   }
 
   try {
+    const modelToUse = resolveModelName(model);
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${normalizeModelName(geminiModel)}:generateContent?key=${geminiApiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${geminiApiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -232,7 +305,9 @@ app.post("/api/refactor/stream", async (req, res) => {
     const cleanedCode = stripCodeFences(parsed?.refactoredCode || "");
 
     let finalCode = cleanedCode;
-    let finalExplanation = prioritizeSmellExplanation(sanitizeExplanation(parsed?.explanation));
+    let finalExplanation = formatStructuredExplanation(
+      prioritizeSmellExplanation(sanitizeExplanation(parsed?.explanation))
+    );
     const finalLanguage = parsed?.language?.trim() || "";
 
     if (!finalCode.trim()) {

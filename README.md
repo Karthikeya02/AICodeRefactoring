@@ -11,8 +11,10 @@ Create a server/.env file (see server/.env.example) with your Gemini API key:
 
 ```
 GEMINI_API_KEY=your_key_here
-GEMINI_MODEL=models/gemini-2.5-flash-lite
 ```
+
+Model selection is handled in the app UI. If no model is specified in environment variables,
+the server defaults to `gemini-2.5-flash-lite`.
 
 ## Run (dev)
 1) In one terminal:
