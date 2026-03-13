@@ -369,9 +369,6 @@ export default function App() {
           <div className="panel-header">
             <h2>Explanation</h2>
           </div>
-          <p className="caution-note">
-            AI refactors may be imperfect. Review output before using in production.
-          </p>
           <ul className="explanation">
             {placeholderExplanation.map((item, index) => (
               <li key={`${item}-${index}`}>{item}</li>
@@ -398,6 +395,9 @@ export default function App() {
           {responseLanguage && (
             <div className="language-label">Language: {responseLanguage}</div>
           )}
+          <p className="caution-note">
+            AI refactors may be imperfect. Review output before usage.
+          </p>
           <div className="git-diff-wrap">
             <DiffViewer
               oldValue={code}

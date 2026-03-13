@@ -38,7 +38,7 @@ app.get("/api/models", async (req, res) => {
 
 const buildPromptText = (code, options) => {
   const goals = [];
-  if (options?.detectSmells) goals.push("Detect and address common code smells");
+  if (options?.detectSmells) goals.push("PRIMARY OBJECTIVE: Detect and report code smells per function/method");
   if (options?.applySolid) goals.push("Apply SOLID principles where appropriate");
 
   const goalsLine = goals.length > 0 ? `Refactoring goals: ${goals.join("; ")}.` : "";
@@ -54,7 +54,12 @@ const buildPromptText = (code, options) => {
     "REFRACTORED_CODE:",
     "<code>",
     "EXPLANATION:",
-    "- 4 to 7 concise bullets, max 15 words each",
+    "- 4 to 7 concise bullets, max 20 words each",
+    "- The first bullets must be per-function/method code smell findings.",
+    "- For each refactored function/method, include one bullet in this style:",
+    "- <function_or_method_name>: <code smell(s)> -> <refactor applied>",
+    "- If no smell exists, use: <function_or_method_name>: no major smell -> minimal cleanup applied.",
+    "- Use concrete smell names (e.g., long method, duplicated logic, poor naming, dead code, large conditional).",
     "Do not include markdown fences or extra text.",
     "Do not use triple backticks in the output.",
     goalsLine,
@@ -99,8 +104,25 @@ const stripCodeFences = (text) => {
 };
 
 const sanitizeExplanation = (items) => {
-  const blockedPattern = /cyclomatic|complexity|software\s*metrics?|smells\s*detected|maintainability\s*index|halstead/i;
+  const blockedPattern = /cyclomatic|complexity|software\s*metrics?|maintainability\s*index|halstead/i;
   return (Array.isArray(items) ? items : []).filter((item) => !blockedPattern.test(item));
+};
+
+const prioritizeSmellExplanation = (items) => {
+  const list = Array.isArray(items) ? items : [];
+  const smellPattern = /long method|duplicated logic|poor naming|dead code|large conditional|smell|no major smell|->/i;
+  const smellFirst = list.filter((item) => smellPattern.test(item));
+  const rest = list.filter((item) => !smellPattern.test(item));
+  const merged = [...smellFirst, ...rest];
+
+  if (smellFirst.length === 0) {
+    return [
+      "Smell analysis: no explicit per-function smell findings were returned.",
+      ...merged
+    ];
+  }
+
+  return merged;
 };
 
 app.post("/api/refactor/stream", async (req, res) => {
@@ -146,7 +168,7 @@ app.post("/api/refactor/stream", async (req, res) => {
     const cleanedCode = stripCodeFences(parsed?.refactoredCode || "");
 
     let finalCode = cleanedCode;
-    let finalExplanation = sanitizeExplanation(parsed?.explanation);
+    let finalExplanation = prioritizeSmellExplanation(sanitizeExplanation(parsed?.explanation));
     const finalLanguage = parsed?.language?.trim() || "";
 
     if (!finalCode.trim()) {
