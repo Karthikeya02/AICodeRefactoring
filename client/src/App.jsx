@@ -29,7 +29,14 @@ export default function App() {
 
   const sanitizeExplanation = (items) => {
     const blockedPattern = /cyclomatic|complexity|software\s*metrics?|smells\s*detected|maintainability\s*index|halstead/i;
-    return (Array.isArray(items) ? items : []).filter((item) => !blockedPattern.test(item));
+    const filtered = (Array.isArray(items) ? items : []).filter((item) => !blockedPattern.test(item));
+    const seen = new Set();
+    return filtered.filter((item) => {
+      const normalized = item.trim().toLowerCase();
+      if (!normalized || seen.has(normalized)) return false;
+      seen.add(normalized);
+      return true;
+    });
   };
 
   const normalizeCode = (text) =>
@@ -274,7 +281,7 @@ export default function App() {
             setResponseLanguage(parsed.language);
           }
         if (parsed?.explanation?.length) {
-            const nextExplanation = sanitizeExplanation(parsed.explanation).slice(0, 5);
+          const nextExplanation = sanitizeExplanation(parsed.explanation);
             setExplanation(nextExplanation);
         }
       }
@@ -282,7 +289,7 @@ export default function App() {
       const parsed = parseStreamedText(buffer) || {};
       setRefactored(parsed.refactoredCode || "");
       if (parsed.language) setResponseLanguage(parsed.language);
-      const finalExplanation = sanitizeExplanation(parsed.explanation).slice(0, 5);
+      const finalExplanation = sanitizeExplanation(parsed.explanation);
       setExplanation(finalExplanation);
 
       const sim = estimateSimilarity(code, parsed.refactoredCode || "");
@@ -293,7 +300,7 @@ export default function App() {
         setExplanation((prev) => [
           "Code appears stable; further refactoring may not help much.",
           ...prev
-        ].slice(0, 5));
+        ]);
       }
     } catch (err) {
       setError(err.message || "Unexpected error.");

@@ -5,9 +5,9 @@ import cors from "cors";
 const app = express();
 const port = process.env.PORT || 3001;
 const geminiApiKey = process.env.GEMINI_API_KEY;
-const geminiModel = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const geminiModel = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
 const normalizeModelName = (modelName) => {
-  if (!modelName) return "gemini-2.5-flash";
+  if (!modelName) return "gemini-2.5-flash-lite";
   return modelName.replace(/^models\//, "");
 };
 
@@ -54,11 +54,14 @@ const buildPromptText = (code, options) => {
     "REFRACTORED_CODE:",
     "<code>",
     "EXPLANATION:",
-    "- 4 to 7 concise bullets, max 20 words each",
+    "- concise bullets",
     "- The first bullets must be per-function/method code smell findings.",
     "- For each refactored function/method, include one bullet in this style:",
     "- <function_or_method_name>: <code smell(s)> -> <refactor applied>",
-    "- If no smell exists, use: <function_or_method_name>: no major smell -> minimal cleanup applied.",
+    "- Include only functions with concrete smells and concrete refactor actions.",
+    "- At most one bullet per function/method.",
+    "- Never include contradictory bullets for the same function.",
+    "- Do not use 'no direct refactoring', 'implicitly', or similar weak statements.",
     "- Use concrete smell names (e.g., long method, duplicated logic, poor naming, dead code, large conditional).",
     "Do not include markdown fences or extra text.",
     "Do not use triple backticks in the output.",
@@ -105,7 +108,56 @@ const stripCodeFences = (text) => {
 
 const sanitizeExplanation = (items) => {
   const blockedPattern = /cyclomatic|complexity|software\s*metrics?|maintainability\s*index|halstead/i;
-  return (Array.isArray(items) ? items : []).filter((item) => !blockedPattern.test(item));
+  const filtered = (Array.isArray(items) ? items : []).filter((item) => !blockedPattern.test(item));
+  const seen = new Set();
+  const deduped = filtered.filter((item) => {
+    const normalized = item.trim().toLowerCase();
+    if (!normalized || seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
+
+  const parsed = deduped.map((item, index) => {
+    const match = item.match(/^(.+?):\s*(.+?)\s*->\s*(.+)$/);
+    if (!match) {
+      return { index, item, parseable: false };
+    }
+
+    const functions = match[1]
+      .split(/,|\band\b|&/i)
+      .map((name) => name.trim().toLowerCase())
+      .filter(Boolean);
+
+    return {
+      index,
+      item,
+      parseable: true,
+      functions,
+      signature: `${match[2].trim().toLowerCase()} -> ${match[3].trim().toLowerCase()}`
+    };
+  });
+
+  const singleFunctionSet = new Set(
+    parsed
+      .filter((entry) => entry.parseable && entry.functions.length === 1)
+      .map((entry) => `${entry.functions[0]}|${entry.signature}`)
+  );
+
+  const keep = parsed.filter((entry) => {
+    if (!entry.parseable || entry.functions.length <= 1) return true;
+    return !entry.functions.every((fn) => singleFunctionSet.has(`${fn}|${entry.signature}`));
+  });
+
+  keep.sort((a, b) => a.index - b.index);
+  return keep.map((entry) => entry.item);
+};
+
+const scoreFunctionBullet = (text) => {
+  const lowered = text.toLowerCase();
+  let score = 0;
+  if (/extract|rename|split|remove|inline|simplif|refactor applied|decompose/.test(lowered)) score += 2;
+  if (/no direct|not applied|implicitly|constraint|minimal cleanup|no major smell/.test(lowered)) score -= 3;
+  return score;
 };
 
 const prioritizeSmellExplanation = (items) => {
@@ -113,16 +165,28 @@ const prioritizeSmellExplanation = (items) => {
   const smellPattern = /long method|duplicated logic|poor naming|dead code|large conditional|smell|no major smell|->/i;
   const smellFirst = list.filter((item) => smellPattern.test(item));
   const rest = list.filter((item) => !smellPattern.test(item));
-  const merged = [...smellFirst, ...rest];
 
-  if (smellFirst.length === 0) {
-    return [
-      "Smell analysis: no explicit per-function smell findings were returned.",
-      ...merged
-    ];
+  const groupedByFunction = new Map();
+  const passthrough = [];
+
+  for (const item of smellFirst) {
+    const match = item.match(/^(.+?):\s*(.+?)\s*->\s*(.+)$/);
+    if (!match) {
+      passthrough.push(item);
+      continue;
+    }
+
+    const functionKey = match[1].trim().toLowerCase();
+    const current = groupedByFunction.get(functionKey);
+    const candidate = { text: item, score: scoreFunctionBullet(item) };
+
+    if (!current || candidate.score > current.score) {
+      groupedByFunction.set(functionKey, candidate);
+    }
   }
 
-  return merged;
+  const bestFunctionBullets = [...groupedByFunction.values()].map((entry) => entry.text);
+  return [...bestFunctionBullets, ...passthrough, ...rest];
 };
 
 app.post("/api/refactor/stream", async (req, res) => {
